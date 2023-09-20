@@ -1,0 +1,62 @@
+name: "Ensure Interval Commit"
+description: "If no commit has occured since specified date, then create empty commit"
+
+inputs:
+  interval_limit:
+    type: integer
+    required: true
+    description: 'Max time since last commit in seconds (default 1 week)'
+    default: 0
+  branch:
+    type: string
+    required: false
+    description: 'Commit branch (defaults to HEAD)'
+    default: ''
+  name:
+    type: string
+    required: true
+    description: 'Author Name'
+  email:
+    type: string
+    required: true
+    description: 'Author Email'
+  message:
+    type: string
+    required: true
+    description: 'Github Commit Message'
+    default: 'Empty Commit'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: '0'
+    - name: Analyze Last Commit
+      shell: bash
+      run: |
+        git --version
+        git config user.name "${{ inputs.name }}"
+        git config user.email "${{ inputs.email }}"
+
+        default_branch="${{ inputs.branch }}"
+        if [ -z "${default_branch}" ]; then
+          default_branch=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+        fi
+
+        git switch ${default_branch}
+        git pull
+
+
+        time_now_epoch=$(date +%s)
+        last_commit_epoch=$(git log -1 --date=raw | grep ^Date | tr -s ' ' | cut -d ' ' -f2)
+        seconds_since=$((time_now_epoch - last_commit_epoch))
+
+        max_seconds=${{ inputs.interval_limit }}
+        if ((seconds_since > max_seconds)); then
+          git commit --allow-empty -m "${{ inputs.message }}"
+          git push origin ${default_branch}
+        else
+          echo "Time since last commit is less than desired interval. No need to create a new commit."
+        fi
